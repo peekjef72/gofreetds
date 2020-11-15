@@ -23,7 +23,9 @@ const statusRowSybase125 string = `
 func (conn *Conn) ExecuteSql(query string, params ...driver.Value) ([]*Result, error) {
 	if conn.sybaseMode125() {
 		return conn.executeSqlSybase125(query, params...)
-	}
+	} else if conn.openserverMode() {
+		return conn.executeSqlOpenServer(query, params...)
+        }
 	statement, numParams := query2Statement(query)
 	if numParams != len(params) {
 		return nil, fmt.Errorf("Incorrect number of params, expecting %d got %d", numParams, len(params))
@@ -32,7 +34,6 @@ func (conn *Conn) ExecuteSql(query string, params ...driver.Value) ([]*Result, e
 	if err != nil {
 		return nil, err
 	}
-
 	statement += statusRow
 
 	sql := fmt.Sprintf("exec sp_executesql N'%s', N'%s', %s", statement, paramDef, paramVal)
@@ -40,6 +41,7 @@ func (conn *Conn) ExecuteSql(query string, params ...driver.Value) ([]*Result, e
 	if numParams == 0 {
 		sql = fmt.Sprintf("exec sp_executesql N'%s'", statement)
 	}
+
 	return conn.Exec(sql)
 }
 
@@ -50,6 +52,27 @@ func (conn *Conn) executeSqlSybase125(query string, params ...driver.Value) ([]*
 	}
 
 	statement += statusRowSybase125
+	sql := strings.Replace(query, "?", "$bindkey", -1)
+	re, _ := regexp.Compile(`(?P<bindkey>\$bindkey)`)
+	matches := re.FindAllSubmatchIndex([]byte(sql), -1)
+
+	for i, _ := range matches {
+		_, escapedValue, _ := go2SqlDataType(params[i])
+		sql = fmt.Sprintf("%s", strings.Replace(sql, "$bindkey", escapedValue, 1))
+	}
+
+	if numParams == 0 {
+		sql = fmt.Sprintf("%s", statement)
+	}
+	return conn.Exec(sql)
+}
+
+func (conn *Conn) executeSqlOpenServer(query string, params ...driver.Value) ([]*Result, error) {
+	statement, numParams := query2Statement(query)
+	if numParams != len(params) {
+		return nil, fmt.Errorf("Incorrect number of params, expecting %d got %d", numParams, len(params))
+	}
+
 	sql := strings.Replace(query, "?", "$bindkey", -1)
 	re, _ := regexp.Compile(`(?P<bindkey>\$bindkey)`)
 	matches := re.FindAllSubmatchIndex([]byte(sql), -1)
@@ -78,7 +101,10 @@ func query2Statement(query string) (string, int) {
 			statement = fmt.Sprintf("%s@p%d%s", statement, i, part)
 		}
 	}
-	return quote(statement), numParams
+// jfpik 20200617 remove quote because raw sql select from where field='value'
+// can't be quoted !!
+//	return quote(statement), numParams
+	return statement, numParams
 }
 
 func parseParams(params ...driver.Value) (string, string, error) {

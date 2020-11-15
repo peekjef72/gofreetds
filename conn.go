@@ -83,6 +83,7 @@ func deleteConnection(conn *Conn) {
 }
 
 const SYBASE string = "sybase"
+const OPENSERVER string = "openserver"
 const SYBASE_12_5 string = "sybase_12_5"
 
 //Connection to the database.
@@ -167,7 +168,7 @@ func (conn *Conn) connect() (*Conn, error) {
 	}
 	//log.Printf("freetds connected to %s@%s.%s", conn.user, conn.host, conn.database)
 	return conn, nil
-}
+} 
 
 //If conn belongs to pool release connection to the pool.
 //If not close connection.
@@ -224,7 +225,7 @@ func (conn *Conn) getDbProc() (*C.DBPROCESS, error) {
 	// Added for Sybase compatibility mode
 	// Version cannot be set to 7.2
 	// Allowing version to be set inside freetds
-	if !conn.sybaseMode() && !conn.sybaseMode125() {
+	if !conn.sybaseMode() && !conn.openserverMode() && !conn.sybaseMode125() {
 		C.my_setlversion(login)
 	}
 
@@ -434,7 +435,7 @@ func (conn *Conn) setDefaults() error {
 	// Adding check for Sybase compatiblity mode
 	// These connection settings below do not
 	// function with Sybase ASE
-	if !conn.sybaseMode() && !conn.sybaseMode125() {
+	if !conn.sybaseMode() && !conn.openserverMode() && !conn.sybaseMode125() {
 		//defaults copied from .Net Driver
 		_, err = conn.exec(`
         set quoted_identifier on
@@ -457,7 +458,7 @@ func (conn *Conn) setDefaults() error {
 }
 
 func (conn *Conn) setFreetdsVersionGte095(freeTdsVersion []int) {
-	//log.Printf("version %v", conn.freeTdsVersion)
+//	log.Printf("version %v", freeTdsVersion)
 	conn.freetdsVersionGte095 = false
 	if len(freeTdsVersion) >= 2 {
 		if freeTdsVersion[0] > 0 ||
@@ -469,7 +470,7 @@ func (conn *Conn) setFreetdsVersionGte095(freeTdsVersion []int) {
 
 func parseFreeTdsVersion(dbVersion string) []int {
 	rxFreeTdsVersion := regexp.MustCompile(`v(\d+).(\d+).(\d+)`)
-	//log.Println("FreeTDS Version: ", dbVersion)
+//	log.Println("FreeTDS Version: ", dbVersion)
 	freeTdsVersion := make([]int, 0)
 	versionMatch := rxFreeTdsVersion.FindStringSubmatch(dbVersion)
 	if len(versionMatch) == 4 {
@@ -486,6 +487,10 @@ func parseFreeTdsVersion(dbVersion string) []int {
 
 func (conn Conn) sybaseMode() bool {
 	return conn.credentials.compatibility == SYBASE
+}
+
+func (conn Conn) openserverMode() bool {
+	return conn.credentials.compatibility == OPENSERVER
 }
 
 func (conn Conn) sybaseMode125() bool {
